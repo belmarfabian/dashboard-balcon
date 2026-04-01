@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discursos del balcón - Frecuencia léxica (corpus estricto)</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+/* ── Reset & base ─────────────────────────────────────── */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{height:100%;margin:0}
+body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#FFFFFF;color:#333;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#canvas{width:min(100vw, 177.78vh);height:min(100vh, 56.25vw);max-width:1280px;max-height:720px;display:flex;flex-direction:column;padding:20px 36px 10px;gap:10px;overflow:hidden}
+#panels-row{flex:1;min-height:0;display:flex;gap:14px;overflow:hidden}
+#controls-row{flex-shrink:0}
+#footer{height:22px;flex-shrink:0;min-height:22px}
+
+/* ── Main panels (floating cards) ─────────────────────── */
+#panel-left{flex:3;display:flex;flex-direction:column;background:#fff;border-radius:10px;border:1px solid #e0ddd8;overflow:hidden}
+#panel-right{flex:2;display:flex;flex-direction:column;background:#fff;border-radius:10px;border:1px solid #e0ddd8;overflow:hidden}
+
+.panel-header{height:26px;display:flex;align-items:center;justify-content:center;padding:0 12px;background:#D95F3B;color:#fff;font-size:11.5px;font-weight:600;letter-spacing:.3px;flex-shrink:0}
+.panel-body{flex:1;position:relative;overflow:hidden;min-height:0}
+
+#graph-svg{width:100%;height:100%}
+#wordcloud{width:100%;height:100%;position:relative;overflow:hidden}
+#wc-inner{position:absolute;top:0;left:0;width:100%;height:100%;transform-origin:center center;transition:transform .15s ease-out}
+
+/* ── Controls: 2 groups aligned with panels (60/40) ───── */
+#controls{display:flex;gap:14px;align-items:stretch}
+#ctrl-left,#ctrl-right{display:flex;gap:8px;align-items:stretch}
+#ctrl-left{flex:3;min-width:0}
+#ctrl-right{flex:2;min-width:0}
+.ctrl-card{background:#fff;border-radius:10px;border:1px solid #e0ddd8;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.ctrl-card .ctrl-label{font-size:9px;color:#fff;font-weight:600;text-transform:none;letter-spacing:.3px;background:#D95F3B;padding:4px 12px;margin:0;border-radius:10px 10px 0 0;text-align:center}
+.ctrl-card .ctrl-content{padding:5px 12px;display:flex;align-items:center;gap:8px;flex:1}
+.ctrl-card.card-pres{flex:2.3;overflow:hidden}
+.ctrl-card.card-pres .pres-pills{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.ctrl-card.card-search{flex:0.7}
+.ctrl-card.card-slider{flex:5}
+.ctrl-card.card-top{flex:3}
+.pres-pills button{font-size:10.5px;padding:4px 10px;border:1px solid #ccc;background:#fff;color:#444;cursor:pointer;font-weight:500;white-space:nowrap;transition:all .15s;border-radius:6px}
+.pres-pills button.active{background:#D95F3B;color:#fff;border-color:#D95F3B;font-weight:700}
+.pres-pills button:hover:not(.active){background:#f3f3f3}
+.search-wrap{position:relative;width:100%}
+#search-input{font-size:11px;padding:4px 24px 4px 8px;border:1px solid #ddd;border-radius:6px;width:100%;outline:none;background:#fafafa}
+#search-input:focus{border-color:#D95F3B;background:#fff}
+.search-clear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:16px;height:16px;border:none;background:#ddd;color:#fff;font-size:10px;line-height:16px;text-align:center;border-radius:50%;cursor:pointer;padding:0}
+.search-clear:hover{background:#D95F3B}
+#top-select{font-size:11px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;outline:none;background:#fafafa;width:100%}
+
+/* ── Footer ───────────────────────────────────────────── */
+#footer{display:flex;align-items:center;justify-content:center;padding:0 44px;font-size:9.5px;color:#999;flex-shrink:0}
+
+/* ── Word cloud spans ─────────────────────────────────── */
+.wc-word{position:absolute;white-space:nowrap;cursor:default;font-weight:600;transition:opacity .3s;opacity:0}
+.wc-word.visible{opacity:1}
+.wc-word.dimmed{opacity:.12}
+.wc-word.highlighted{text-decoration:underline;text-decoration-color:#D95F3B}
+
+/* ── Graph ────────────────────────────────────────────── */
+.link{fill:none;stroke-opacity:.55}
+.node circle{stroke:#fff;stroke-width:1px}
+.node text{font-size:9.5px;fill:#555;pointer-events:none;font-weight:500}
+.node.dimmed circle{opacity:.12}
+.node.dimmed text{opacity:.12}
+.link.dimmed{stroke-opacity:.04}
+.node.highlighted text{font-weight:800;fill:#D95F3B}
+
+/* ── Tooltip ──────────────────────────────────────────── */
+.tooltip{position:fixed;pointer-events:none;background:rgba(0,0,0,.8);color:#fff;padding:5px 10px;border-radius:4px;font-size:11px;opacity:0;transition:opacity .15s;z-index:999}
+
+/* ── Responsive ──────────────────────────────────────── */
+@media(max-width:900px){
+  #canvas{padding:14px 20px 8px}
+}
+@media(max-width:700px){
+  #canvas{padding:10px 12px 6px}
+  #panels-row{flex-direction:column}
+  #page2-grid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ── Frequency slider ────────────────────────────────── */
+.freq-row{display:flex;gap:6px;align-items:center}
+.freq-range{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:#e0e0e0;border-radius:2px;outline:none;min-width:20px}
+.freq-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;background:#D95F3B;cursor:pointer;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.2)}
+.freq-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#D95F3B;cursor:pointer;border:2px solid #fff}
+.freq-num{width:45px;font-size:11px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;text-align:center;outline:none;background:#fafafa;-moz-appearance:textfield}
+.freq-num::-webkit-inner-spin-button,.freq-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.freq-num:focus{border-color:#D95F3B;background:#fff}
+
+/* ── Page navigation ─────────────────────────────────── */
+.page-nav{display:flex;align-items:center;gap:4px;user-select:none}
+.page-nav .pn-btn{cursor:pointer;font-size:11px;color:#999;padding:0 3px;transition:color .15s}
+.page-nav .pn-btn:hover{color:#D95F3B}
+.page-nav .pn-btn.disabled{opacity:.3;pointer-events:none}
+.page-nav .pn-text{font-size:9.5px;color:#999}
+
+/* ── Page 2: 3×3 grid ────────────────────────────────── */
+#page1-content{display:flex;flex-direction:column;flex:1;min-height:0;gap:10px;overflow:hidden}
+#page2-content-wrapper{display:none;flex:1;min-height:0;overflow:hidden}
+#page2-main{display:flex;flex:1;min-height:0;gap:10px;height:100%}
+#page2-grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:6px;min-height:0;height:100%}
+#page2-sidebar{flex:0 0 110px;display:flex;flex-direction:column;gap:6px;justify-content:center;font-size:9px}
+.mini-panel{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #e0ddd8;cursor:pointer;transition:box-shadow .2s}
+.mini-panel:hover{box-shadow:0 2px 12px rgba(0,0,0,.15)}
+/* Expanded overlay */
+#panel-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
+#panel-overlay.active{display:flex}
+#panel-expanded{width:55%;height:60%;background:#fff;border-radius:12px;border:1px solid #e0ddd8;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+#panel-expanded .expanded-header{display:flex;align-items:center;justify-content:space-between;padding:0 14px;height:30px;color:#fff;font-size:12px;font-weight:600;flex-shrink:0;border-radius:12px 12px 0 0}
+#panel-expanded .expanded-body{flex:1;min-height:0;position:relative}
+#panel-expanded .expanded-body svg{width:100%;height:100%;display:block}
+.expanded-close{background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:.7}
+.expanded-close:hover{opacity:1}
+.mini-header{font-size:9px;font-weight:600;padding:3px 8px;color:#fff;flex-shrink:0;border-radius:10px 10px 0 0;text-align:center}
+.mini-body{flex:1;min-height:0}
+.mini-body svg{width:100%;height:100%;display:block}
+
+/* ── Page 2 sidebar controls ─────────────────────────── */
+#page2-sidebar .ctrl-card{flex:0 0 auto}
+#page2-sidebar input[type="text"]{width:100%;font-size:10px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#fafafa;outline:none}
+#page2-sidebar input[type="text"]:focus{border-color:#D95F3B;background:#fff}
+#page2-sidebar select{width:100%;font-size:10px;padding:2px 4px;border:1px solid #ddd;border-radius:6px;background:#fafafa;outline:none}
+</style>
+</head>
+<body>
+
+<!-- ════════ CANVAS (Power BI style) ════════ -->
+<div id="canvas">
+  <!-- Page 1 -->
+  <div id="page1-content">
+    <!-- Panels row -->
+    <div id="panels-row">
+      <div id="panel-left">
+        <div class="panel-header">Redes de bigramas (corpus estricto)</div>
+        <div class="panel-body"><svg id="graph-svg"></svg></div>
+      </div>
+      <div id="panel-right">
+        <div class="panel-header">Nube de palabras (corpus estricto)</div>
+        <div class="panel-body"><div id="wordcloud"></div></div>
+      </div>
+    </div>
+  </div><!-- /page1-content -->
+  <!-- Page 2 -->
+  <div id="page2-content-wrapper">
+    <div id="page2-main">
+      <div id="page2-grid"></div>
+      <div id="page2-sidebar"></div>
+    </div>
+  </div>
+  <!-- Controls card (visible on both pages, disabled on page 2) -->
+  <div id="controls-row">
+    <div id="controls">
+      <div id="ctrl-left">
+        <div class="ctrl-card card-pres">
+          <span class="ctrl-label">Presidente</span>
+          <div class="ctrl-content"><div class="pres-pills" id="pres-pills"></div></div>
+        </div>
+        <div class="ctrl-card card-search">
+          <span class="ctrl-label">Búsqueda por término</span>
+          <div class="ctrl-content"><div class="search-wrap"><input id="search-input" type="text" placeholder="término..."><button class="search-clear" id="search-clear">✕</button></div></div>
+        </div>
+      </div>
+      <div id="ctrl-right">
+        <div class="ctrl-card card-slider">
+          <span class="ctrl-label">Frecuencia término</span>
+          <div class="ctrl-content freq-row">
+            <input type="number" id="freq-min" min="0" value="0" class="freq-num">
+            <input type="range" id="freq-slider" min="0" max="10" step="1" value="0" class="freq-range">
+            <input type="number" id="freq-max" min="0" value="99" class="freq-num">
+          </div>
+        </div>
+        <div class="ctrl-card card-top">
+          <span class="ctrl-label">Top</span>
+          <div class="ctrl-content">
+            <select id="top-select">
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ════════ FOOTER ════════ -->
+  <div id="footer">
+    <span class="page-nav">
+      <span class="pn-btn" id="pn-prev">&#9664;</span>
+      <span class="pn-text" id="pn-label">1 de 2</span>
+      <span class="pn-btn" id="pn-next">&#9654;</span>
+    </span>
+  </div>
+</div>
+
+<!-- ════════ EXPANDED OVERLAY ════════ -->
+<div id="panel-overlay">
+  <div id="panel-expanded">
+    <div class="expanded-header" id="expanded-header"><span id="expanded-title"></span><button class="expanded-close" id="expanded-close">✕</button></div>
+    <div class="expanded-body" id="expanded-body"></div>
+  </div>
+</div>
+
+<!-- ════════ TOOLTIP ════════ -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════════════
+const UNI_RAW = [{"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "libertad", "n": 5}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "verdad", "n": 5}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "justicia", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "solidaridad", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "vuelve", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "violencia", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "paz", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "juntos", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "voluntad", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "obra", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "vida", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "quiere", "n": 3}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "alegría", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "entusiasmo", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "reconstruir", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "democracia", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "odio", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "caminos", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "esfuerzo", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "cuidar", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "podremos", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "según", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "nacional", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "anhelan", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "quieren", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "digo", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "plazo", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "confianza", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "espero", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "santiago", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "recibimiento", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "alegre", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "entusiasta", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "afectuoso", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "afecto", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "hombre", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "reencuentra", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "comprendo", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "responsabilidad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "puesto", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "hombros", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "prometo", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "entregar", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "energías", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "capacidad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "cumplir", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "anhelos", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "verdadera", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "histórico", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w": "recogerán", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "estilo", "n": 8}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "comunidad", "n": 7}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "tarea", "n": 7}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "gente", "n": 7}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "mundo", "n": 6}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "autoridad", "n": 6}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "acción", "n": 5}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "trabajo", "n": 5}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "administración", "n": 5}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "pobres", "n": 5}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "muchas", "n": 4}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "nacional", "n": 4}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "frente", "n": 4}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "llamo", "n": 4}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "jóvenes", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "esperanza", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "superior", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "países", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "veces", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "personas", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "dignidad", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "impersonalidad", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "niños", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "mujeres", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "colaboradores", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "ciudadanos", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "democracia", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "políticas", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "tiempos", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "especialmente", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "urgencias", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "energías", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "problemas", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "ningún", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "servicios", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "decisiones", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "servicio", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "práctica", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "corrupción", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "pobreza", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "generación", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "apoyo", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "respaldo", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "concluye", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "democrático", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "inicia", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "etapa", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "vida", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "sueños", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w": "amor", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "siglo", "n": 6}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "tarde", "n": 5}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "nuevo", "n": 5}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "casa", "n": 5}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "tarea", "n": 4}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "jóvenes", "n": 4}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "centro", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "hijos", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "trabajar", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "símbolo", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "nace", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "verdad", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "tareas", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "autoridad", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "futuro", "n": 3}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "elegido", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "transparencia", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "compromiso", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "convoco", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "política", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "hombres", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "mujeres", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "niños", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "vida", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "familia", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "milenio", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "balcones", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "pasado", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "sueños", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "consciente", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "respeto", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "invito", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "capacidad", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "hombre", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "derechos", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "capaces", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "justicia", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "destino", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "tomo", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "igual", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "deudas", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "heridas", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "sabemos", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "pendientes", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "imaginación", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "inteligencia", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "voy", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "mayoría", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "sueño", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w": "paso", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "paso", "n": 4}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "quieren", "n": 4}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "siento", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "sociedad", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "destino", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "pienso", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "ciudadanía", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "trabajo", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "sabido", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "ciudadanos", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "historia", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "supo", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "muchas", "n": 3}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "cariño", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "democracia", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "juntos", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "aquellos", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "futuro", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "construir", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "inclusiva", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "siglo", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "allá", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "cara", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "pasado", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "sabemos", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "resolver", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "dificultades", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "hace", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "saben", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "palabra", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "mujer", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "empeño", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "lograr", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "justicia", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "niños", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "jóvenes", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "fuerzas", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "mujeres", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "surgir", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "ciudadano", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "dado", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "conozco", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "tantos", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "ilustres", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "plaza", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "época", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "eduardo", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "frei", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "homenaje", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w": "salir", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "tierra", "n": 6}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "vida", "n": 5}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "mar", "n": 5}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "juntos", "n": 5}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "héroes", "n": 5}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "ahí", "n": 5}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "veces", "n": 4}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "levantar", "n": 4}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "fuerzas", "n": 4}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "transición", "n": 4}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "dios", "n": 4}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "mientras", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "voluntad", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "libre", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "tragedia", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "joven", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "adversidad", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "bandera", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "bruno", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "alma", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "reconstruir", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "bicentenario", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "desafío", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "maravillosa", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "cierto", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "dijimos", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "vidas", "n": 3}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "naturaleza", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "unidad", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "vivimos", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "histórico", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "dramático", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "siglo", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "independiente", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "frente", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "recordar", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "noche", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "ruinas", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "rota", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "embarrada", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "levantó", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "manos", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "mujer", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "jamás", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "tiempos", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "chileno", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "desierto", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "cordillera", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "lágrimas", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w": "pesar", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "programa", "n": 12}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "juntos", "n": 7}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "urgencia", "n": 5}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "compromete", "n": 5}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "camino", "n": 4}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "diálogo", "n": 4}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "primera", "n": 4}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "mano", "n": 4}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "compromiso", "n": 4}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "vuelto", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "apoyo", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "derechos", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "iniciar", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "comprometido", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "hora", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "justa", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "mandato", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "sociedad", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "educación", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "pública", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "calidad", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "pueden", "n": 3}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "hace", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "casa", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "confianza", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "protagonistas", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "procesos", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "voy", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "dieron", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "votaron", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "votar", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "desarrollada", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "moderna", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "tolerante", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "próspera", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "inclusiva", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "merecemos", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "adelante", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "hacerlo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "marco", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "fuerzas", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "políticas", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "sociales", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "objetivo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "avanzar", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "cumplimiento", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "ciudadano", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "gente", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "plaza", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w": "constitución", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "niños", "n": 10}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "vida", "n": 10}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "libertad", "n": 9}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "misión", "n": 8}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "mejorar", "n": 8}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "hijos", "n": 8}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "acuerdo", "n": 7}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "seguridad", "n": 7}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "clase", "n": 7}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "media", "n": 7}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "familias", "n": 6}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "vidas", "n": 6}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "compromiso", "n": 6}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "calidad", "n": 6}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "sociedad", "n": 6}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "ciudadanos", "n": 6}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "dignidad", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "buena", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "esfuerzo", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "mayor", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "crear", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "mujeres", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "rostro", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "desarrollo", "n": 5}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "después", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "casa", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "justa", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "desarrollar", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "dios", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "voluntad", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "lograr", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "buscar", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "unidad", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "transición", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "avanzar", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "pobreza", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "oportunidades", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "pueda", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "paz", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "tarea", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "educación", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "verdadero", "n": 4}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "compartir", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "tantas", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "nacional", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "primer", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "acto", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "infancia", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "hace", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w": "adversidad", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "juntos", "n": 11}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "historia", "n": 8}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "volver", "n": 8}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "pueblos", "n": 7}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "sociedad", "n": 7}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "derechos", "n": 6}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "constitución", "n": 6}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "vida", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "humanos", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "proceso", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "vivir", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "niños", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "lugar", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "mandato", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "gente", "n": 5}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "crisis", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "pandemia", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "sepan", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "decirles", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "personas", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "familias", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "mujeres", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "pueden", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "derecho", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "niñas", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "acá", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "democracia", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "violencia", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "importante", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "difícil", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "digno", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "mirar", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "sabemos", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "mundo", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "trabajar", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "salud", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "conflicto", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "habitantes", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "primera", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "hablo", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "tantas", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "viendo", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "casas", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "trabajo", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "seguimos", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "plaza", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "movilizaciones", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "disidencias", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "sociales", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w": "digna", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "unidad", "n": 10}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "trabajar", "n": 9}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "juntos", "n": 7}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "levanta", "n": 7}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "esperanza", "n": 6}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "recuperar", "n": 6}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "esfuerzo", "n": 6}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "oportunidad", "n": 6}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "noche", "n": 5}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "familias", "n": 5}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "orden", "n": 5}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "funcionarios", "n": 5}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "familia", "n": 5}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "palacio", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "vivir", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "trabajo", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "claro", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "carácter", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "aquellos", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "nadie", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "cosas", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "personas", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "después", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "desafiada", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "vive", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "dios", "n": 4}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "buenas", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "noches", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "balcón", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "moneda", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "sur", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "corazón", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "responsabilidad", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "junto", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "pía", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "ganamos", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "elección", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "comienza", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "asumir", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "verdad", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "enfrentar", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "seguridad", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "educación", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "aunque", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "fuerte", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "adversarios", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "digo", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "construir", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "hecho", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w": "instituciones", "n": 3}];
+
+const BI_RAW = [{"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "digo", "w2": "voluntad", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "violencia", "w2": "quiere", "n": 2}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "santiago", "w2": "recibimiento", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "recibimiento", "w2": "alegre", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "alegre", "w2": "entusiasta", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "entusiasta", "w2": "afectuoso", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "afectuoso", "w2": "alegría", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "alegría", "w2": "entusiasmo", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "entusiasmo", "w2": "afecto", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "afecto", "w2": "hombre", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "hombre", "w2": "reencuentra", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "reencuentra", "w2": "libertad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "libertad", "w2": "comprendo", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "comprendo", "w2": "responsabilidad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "responsabilidad", "w2": "puesto", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "puesto", "w2": "hombros", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "hombros", "w2": "prometo", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "prometo", "w2": "entregar", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "entregar", "w2": "energías", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "energías", "w2": "capacidad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "capacidad", "w2": "cumplir", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "cumplir", "w2": "anhelos", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "anhelos", "w2": "reconstruir", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "reconstruir", "w2": "democracia", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "democracia", "w2": "verdadera", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "verdadera", "w2": "libertad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "libertad", "w2": "justicia", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "justicia", "w2": "solidaridad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "solidaridad", "w2": "histórico", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "histórico", "w2": "recogerán", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "recogerán", "w2": "anales", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "anales", "w2": "mundo", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "mundo", "w2": "entero", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "entero", "w2": "gobernantes", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "gobernantes", "w2": "representantes", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "representantes", "w2": "naciones", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "naciones", "w2": "venido", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "venido", "w2": "celebrar", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "celebrar", "w2": "agradecemos", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "agradecemos", "w2": "solidaridad", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "solidaridad", "w2": "momentos", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "momentos", "w2": "dolor", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "dolor", "w2": "compañía", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "compañía", "w2": "hora", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "hora", "w2": "alegría", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "alegría", "w2": "vuelve", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "vuelve", "w2": "democracia", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "democracia", "w2": "vuelve", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "vuelve", "w2": "violencia", "n": 1}, {"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-izquierda", "w1": "violencia", "w2": "sangre", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "muchas", "w2": "veces", "n": 3}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "héroes", "w2": "poetas", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "poetas", "w2": "santos", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "nuevos", "w2": "tiempos", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "gente", "w2": "urgencias", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "trabajo", "w2": "realizado", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "lucha", "w2": "pobreza", "n": 2}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "concluye", "w2": "mandato", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "mandato", "w2": "democrático", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "democrático", "w2": "inicia", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "inicia", "w2": "etapa", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "etapa", "w2": "vida", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "vida", "w2": "republicana", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "republicana", "w2": "jóvenes", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "jóvenes", "w2": "edad", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "edad", "w2": "esperanza", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "esperanza", "w2": "preguntan", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "preguntan", "w2": "sueños", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "sueños", "w2": "amor", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "amor", "w2": "síntesis", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "síntesis", "w2": "razones", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "razones", "w2": "vivir", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "vivir", "w2": "labor", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "labor", "w2": "política", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "política", "w2": "noble", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "noble", "w2": "expresión", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "expresión", "w2": "busca", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "busca", "w2": "abrir", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "abrir", "w2": "espacios", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "espacios", "w2": "crear", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "crear", "w2": "condiciones", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "condiciones", "w2": "faciliten", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "faciliten", "w2": "aspiración", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "aspiración", "w2": "básica", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "básica", "w2": "humano", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "humano", "w2": "buscar", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "buscar", "w2": "dicha", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "dicha", "w2": "verdadera", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "verdadera", "w2": "finalidad", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "finalidad", "w2": "superior", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "superior", "w2": "política", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "política", "w2": "hace", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "hace", "w2": "patente", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "patente", "w2": "países", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "países", "w2": "cuales", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "cuales", "w2": "acción", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "acción", "w2": "marca", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "marca", "w2": "muchas", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "veces", "w2": "decisiva", "n": 1}, {"p": "Frei", "y": 1994, "c": "Concertación", "o": "centro", "w1": "decisiva", "w2": "destino", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "jóvenes", "w2": "niños", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "nuevo", "w2": "milenio", "n": 2}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "elegido", "w2": "dirigir", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "dirigir", "w2": "destinos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "destinos", "w2": "responderé", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "responderé", "w2": "mandato", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "mandato", "w2": "entregado", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "entregado", "w2": "estilo", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "estilo", "w2": "trabajo", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "trabajo", "w2": "transparencia", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "transparencia", "w2": "austeridad", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "austeridad", "w2": "compromiso", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "compromiso", "w2": "tarea", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "tarea", "w2": "tarea", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "tarea", "w2": "convoco", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "convoco", "w2": "tarde", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "tarde", "w2": "hermosa", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "hermosa", "w2": "corresponde", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "corresponde", "w2": "tradiciones", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "tradiciones", "w2": "extranjero", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "extranjero", "w2": "centro", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "centro", "w2": "izquierda", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "izquierda", "w2": "derecha", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "derecha", "w2": "interesan", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "interesan", "w2": "política", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "política", "w2": "interesa", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "interesa", "w2": "hombres", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "hombres", "w2": "mujeres", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "mujeres", "w2": "ancianos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "ancianos", "w2": "adultos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "adultos", "w2": "jóvenes", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "niños", "w2": "habitan", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "habitan", "w2": "extremos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "extremos", "w2": "territorio", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "territorio", "w2": "campesinos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "campesinos", "w2": "obreros", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "obreros", "w2": "empresarios", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "empresarios", "w2": "profesionales", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "profesionales", "w2": "mapuches", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "mapuches", "w2": "pueblos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "pueblos", "w2": "originarios", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "originarios", "w2": "nortinos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "nortinos", "w2": "sureños", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "sureños", "w2": "capitalinos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "capitalinos", "w2": "civiles", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "civiles", "w2": "militares", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "militares", "w2": "ricos", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "ricos", "w2": "pobres", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "pobres", "w2": "recibido", "n": 1}, {"p": "Lagos", "y": 2000, "c": "Concertación", "o": "centro-izquierda", "w1": "recibido", "w2": "herencia", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "eduardo", "w2": "frei", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "ciudadanos", "w2": "muchas", "n": 2}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "aplausos", "w2": "sonrisas", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "sonrisas", "w2": "regalan", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "regalan", "w2": "abrazos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "abrazos", "w2": "siento", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "siento", "w2": "privilegiada", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "privilegiada", "w2": "recibir", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "recibir", "w2": "cariño", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "cariño", "w2": "dirigir", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "dirigir", "w2": "palabras", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "palabras", "w2": "exclusión", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "exclusión", "w2": "tiempos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "tiempos", "w2": "pasados", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "pasados", "w2": "dramático", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "dramático", "w2": "distingo", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "distingo", "w2": "mirábamos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "mirábamos", "w2": "recelo", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "recelo", "w2": "suspicacia", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "suspicacia", "w2": "soberbia", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "soberbia", "w2": "dieciséis", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "dieciséis", "w2": "democracia", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "democracia", "w2": "trabajado", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "trabajado", "w2": "juntos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "juntos", "w2": "limar", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "limar", "w2": "asperezas", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "asperezas", "w2": "sociedad", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "sociedad", "w2": "dividida", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "dividida", "w2": "sociedad", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "sociedad", "w2": "separaba", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "separaba", "w2": "aquellos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "aquellos", "w2": "sintamos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "sintamos", "w2": "soplan", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "soplan", "w2": "vientos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "vientos", "w2": "distintos", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "distintos", "w2": "futuro", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "futuro", "w2": "futuro", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "futuro", "w2": "caben", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "caben", "w2": "construir", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "construir", "w2": "inclusiva", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "inclusiva", "w2": "ninguna", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "ninguna", "w2": "diversidad", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "diversidad", "w2": "nadie", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "nadie", "w2": "sienta", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "sienta", "w2": "destino", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "destino", "w2": "intemperie", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "intemperie", "w2": "preparado", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "preparado", "w2": "desafío", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "desafío", "w2": "siglo", "n": 1}, {"p": "Bachelet I", "y": 2006, "c": "Concertación", "o": "centro-izquierda", "w1": "siglo", "w2": "veintiuno", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "vida", "w2": "independiente", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "rota", "w2": "embarrada", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "fuerzas", "w2": "armadas", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "nueva", "w2": "transición", "n": 2}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "hombres", "w2": "mujeres", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "mujeres", "w2": "mientras", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "mientras", "w2": "asumía", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "asumía", "w2": "mando", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "mando", "w2": "supremo", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "supremo", "w2": "voluntad", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "voluntad", "w2": "libre", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "libre", "w2": "democrática", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "democrática", "w2": "soberana", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "soberana", "w2": "naturaleza", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "naturaleza", "w2": "volvió", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "volvió", "w2": "recordarnos", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "recordarnos", "w2": "importancia", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "importancia", "w2": "unidad", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "unidad", "w2": "nacional", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "nacional", "w2": "vivimos", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "vivimos", "w2": "histórico", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "histórico", "w2": "dramático", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "dramático", "w2": "histórico", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "histórico", "w2": "abriremos", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "abriremos", "w2": "puertas", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "puertas", "w2": "tercer", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "tercer", "w2": "siglo", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "siglo", "w2": "vida", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "independiente", "w2": "dramático", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "dramático", "w2": "asolado", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "asolado", "w2": "tragedia", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "tragedia", "w2": "hora", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "hora", "w2": "histórica", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "histórica", "w2": "dramática", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "dramática", "w2": "fortalece", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "fortalece", "w2": "ejemplo", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "ejemplo", "w2": "arturo", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "arturo", "w2": "prat", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "prat", "w2": "aquel", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "aquel", "w2": "joven", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "joven", "w2": "capitán", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "capitán", "w2": "esmeralda", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "esmeralda", "w2": "frente", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "frente", "w2": "adversidad", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "adversidad", "w2": "juró", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "juró", "w2": "mientras", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "mientras", "w2": "viviera", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "viviera", "w2": "bandera", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "bandera", "w2": "flamearía", "n": 1}, {"p": "Piñera I", "y": 2010, "c": "Alianza", "o": "centro-derecha", "w1": "flamearía", "w2": "lugar", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "programa", "w2": "compromete", "n": 5}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "primera", "w2": "mano", "n": 4}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "voy", "w2": "dieron", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "dieron", "w2": "apoyo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "apoyo", "w2": "votaron", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "votaron", "w2": "votar", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "hora", "w2": "iniciar", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "iniciar", "w2": "juntos", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "juntos", "w2": "camino", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "camino", "w2": "desarrollada", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "desarrollada", "w2": "justa", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "justa", "w2": "moderna", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "moderna", "w2": "tolerante", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "tolerante", "w2": "próspera", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "próspera", "w2": "inclusiva", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "inclusiva", "w2": "merecemos", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "adelante", "w2": "programa", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "programa", "w2": "comprometido", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "comprometido", "w2": "hacerlo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "hacerlo", "w2": "marco", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "marco", "w2": "diálogo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "diálogo", "w2": "fuerzas", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "fuerzas", "w2": "políticas", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "políticas", "w2": "sociales", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "sociales", "w2": "diálogo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "diálogo", "w2": "objetivo", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "avanzar", "w2": "cumplimiento", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "cumplimiento", "w2": "programa", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "programa", "w2": "mandato", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "mandato", "w2": "ciudadano", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "ciudadano", "w2": "vuelto", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "educación", "w2": "pública", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "compromete", "w2": "reforma", "n": 2}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "hace", "w2": "cuatro", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "cuatro", "w2": "atravesé", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "atravesé", "w2": "puerta", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "puerta", "w2": "vuelto", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "vuelto", "w2": "entrar", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "entrar", "w2": "acompañaron", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "acompañaron", "w2": "despedida", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "despedida", "w2": "vuelven", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "vuelven", "w2": "conmigo", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "conmigo", "w2": "casa", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "casa", "w2": "presidentes", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "presidentes", "w2": "presidentas", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "presidentas", "w2": "agradecerles", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "agradecerles", "w2": "cariño", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "cariño", "w2": "demostrado", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "demostrado", "w2": "apoyo", "n": 1}, {"p": "Bachelet II", "y": 2014, "c": "Nueva Mayoría", "o": "centro-izquierda", "w1": "apoyo", "w2": "constante", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "clase", "w2": "media", "n": 7}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "desarrollar", "w2": "talentos", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "vida", "w2": "dignidad", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "hijos", "w2": "nietos", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "verdadero", "w2": "desarrollo", "n": 3}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "buenas", "w2": "noches", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "cambio", "w2": "mando", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "primer", "w2": "acto", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "acuerdo", "w2": "nacional", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "niños", "w2": "infancia", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "firme", "w2": "compromiso", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "calidad", "w2": "vida", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "talentos", "w2": "dios", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "dios", "w2": "dio", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "buena", "w2": "voluntad", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "cumplir", "w2": "misión", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "seguridad", "w2": "vida", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "buscar", "w2": "propia", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "unidad", "w2": "esperanza", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "nueva", "w2": "transición", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "desarrollado", "w2": "pobreza", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "américa", "w2": "latina", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "compromiso", "w2": "esfuerzo", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "retroceder", "w2": "delincuencia", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "seguridad", "w2": "ciudadana", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "mejorar", "w2": "calidad", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "red", "w2": "clase", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "media", "w2": "protegida", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "crear", "w2": "oportunidades", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "mejorar", "w2": "pensiones", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "rostro", "w2": "humano", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "regiones", "w2": "comunas", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "operadores", "w2": "políticos", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "hombres", "w2": "mujeres", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "crear", "w2": "buenos", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "buenos", "w2": "empleos", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "empleos", "w2": "mejorar", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "mejorar", "w2": "salarios", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "desarrollo", "w2": "ver", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "puedo", "w2": "asegurar", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "mostró", "w2": "rostro", "n": 2}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "noches", "w2": "muchas", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "muchas", "w2": "compartir", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "compartir", "w2": "significado", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "significado", "w2": "tantas", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "tantas", "w2": "emociones", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "emociones", "w2": "después", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "después", "w2": "cambio", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "mando", "w2": "congreso", "n": 1}, {"p": "Piñera II", "y": 2018, "c": "Chile Vamos", "o": "centro-derecha", "w1": "congreso", "w2": "nacional", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "niños", "w2": "niñas", "n": 4}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "derechos", "w2": "humanos", "n": 3}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "viendo", "w2": "casas", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "gabinete", "w2": "equipos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "pueden", "w2": "vivir", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "vivienda", "w2": "digna", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "partimos", "w2": "cero", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "mujeres", "w2": "disidencias", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "salvador", "w2": "allende", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "terminemos", "w2": "mandato", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "piensan", "w2": "distinto", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "adelante", "w2": "juntos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "américa", "w2": "latina", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "profundamente", "w2": "latinoamericanos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "trabajemos", "w2": "juntos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "relación", "w2": "autoridades", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "lento", "w2": "lejos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "salud", "w2": "mental", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "volver", "w2": "encontrarnos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "seres", "w2": "humanos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "conflicto", "w2": "mapuche", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "mapuche", "w2": "conflicto", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "después", "w2": "tantas", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "tantas", "w2": "décadas", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "paritaria", "w2": "participación", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "participación", "w2": "pueblos", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "escuchemos", "w2": "buena", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "buena", "w2": "caricaturas", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "mundo", "w2": "mirando", "n": 2}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "habitantes", "w2": "tarde", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "tarde", "w2": "primera", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "primera", "w2": "hablo", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "hablo", "w2": "habitamos", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "habitamos", "w2": "cuánto", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "cuánto", "w2": "sufrido", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "sufrido", "w2": "tantas", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "tantas", "w2": "alegrías", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "alegrías", "w2": "dado", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "dado", "w2": "infinitas", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "infinitas", "w2": "darme", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "darme", "w2": "honor", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "honor", "w2": "viendo", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "casas", "w2": "largo", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "largo", "w2": "ancho", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "ancho", "w2": "familia", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "familia", "w2": "incondicional", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "incondicional", "w2": "gabinete", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "equipos", "w2": "personalmente", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "personalmente", "w2": "irina", "n": 1}, {"p": "Boric", "y": 2022, "c": "Apruebo Dignidad", "o": "izquierda", "w1": "irina", "w2": "hecho", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "buenas", "w2": "noches", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "palacio", "w2": "moneda", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "ganamos", "w2": "elección", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "trabajar", "w2": "juntos", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "levantamos", "w2": "después", "n": 3}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "diego", "w2": "portales", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "pido", "w2": "respeto", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "autoridades", "w2": "funcionarios", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "clase", "w2": "media", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "comenzar", "w2": "trabajar", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "trabajadores", "w2": "estudiantes", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "funcionarios", "w2": "públicos", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "llamado", "w2": "unidad", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "unidad", "w2": "invita", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "invita", "w2": "trabajar", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "invitamos", "w2": "unidad", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "libertad", "w2": "alcanzamos", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "educación", "w2": "pública", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "dios", "w2": "bendiga", "n": 2}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "noches", "w2": "buenas", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "noches", "w2": "balcón", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "balcón", "w2": "histórico", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "histórico", "w2": "balcón", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "balcón", "w2": "palacio", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "moneda", "w2": "agradecerles", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "agradecerles", "w2": "honor", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "honor", "w2": "privilegio", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "privilegio", "w2": "haberme", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "haberme", "w2": "elegido", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "elegido", "w2": "extremo", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "extremo", "w2": "norte", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "norte", "w2": "visviri", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "visviri", "w2": "extremo", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "extremo", "w2": "sur", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "sur", "w2": "puerto", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "puerto", "w2": "williams", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "williams", "w2": "continental", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "continental", "w2": "insular", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "insular", "w2": "corazón", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "corazón", "w2": "lleno", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "lleno", "w2": "gratitud", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "gratitud", "w2": "alma", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "alma", "w2": "encendida", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "encendida", "w2": "enorme", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "enorme", "w2": "responsabilidad", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "responsabilidad", "w2": "encomendado", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "encomendado", "w2": "noche", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "noche", "w2": "junto", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "junto", "w2": "pía", "n": 1}, {"p": "Kast", "y": 2026, "c": "Cambio por Chile", "o": "derecha", "w1": "pía", "w2": "primera", "n": 1}];
+
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════
+const PRESIDENTS = ["Aylwin","Frei","Lagos","Bachelet I","Piñera I","Bachelet II","Piñera II","Boric","Kast"];
+
+const ORIENT_COLOR = {
+  "izquierda":       "#D95F3B",
+  "centro-izquierda":"#4A7EC7",
+  "centro":          "#7EA8C9",
+  "centro-derecha":  "#F5A623",
+  "derecha":         "#1B3A5C"
+};
+
+// Rich color palette for word cloud
+const WC_COLORS = ["#D95F3B","#4A7EC7","#1B3A5C","#7EA8C9","#F5A623","#2E7D32","#8E24AA","#C62828","#00838F","#E65100","#AD1457","#1565C0","#6A1B9A","#2E7D32","#D84315"];
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let currentPres = "Kast";
+let currentTop  = 15;
+let searchTerm  = "";
+let simulation  = null;
+let currentPage = 1;
+let freqMin     = 0;  // slider value (min edge count to show)
+
+// ═══════════════════════════════════════════════════════════
+//  BUILD PRESIDENT PILLS
+// ═══════════════════════════════════════════════════════════
+const pillsEl = document.getElementById("pres-pills");
+// "Todos" pill — aggregates all presidents on page 1
+const btnTodos = document.createElement("button");
+btnTodos.textContent = "Todos";
+btnTodos.dataset.pres = "Todos";
+btnTodos.addEventListener("click", () => {
+  currentPres = "Todos";
+  pillsEl.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+  btnTodos.classList.add("active");
+  if (currentPage === 2) setPage(1);
+  else update();
+});
+pillsEl.appendChild(btnTodos);
+
+PRESIDENTS.forEach(p => {
+  const btn = document.createElement("button");
+  btn.textContent = p + " (" + getPresYear(p) + ")";
+  btn.dataset.pres = p;
+  if (p === currentPres) btn.classList.add("active");
+  btn.addEventListener("click", () => {
+    currentPres = p;
+    pillsEl.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    if (currentPage === 2) setPage(1);
+    else update();
+  });
+  pillsEl.appendChild(btn);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════════
+document.getElementById("top-select").addEventListener("change", e => {
+  currentTop = +e.target.value;
+  update();
+});
+
+let searchTimeout;
+const searchInput = document.getElementById("search-input");
+searchInput.addEventListener("input", e => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    searchTerm = e.target.value.trim().toLowerCase();
+    applySearch();
+  }, 200);
+});
+document.getElementById("search-clear").addEventListener("click", () => {
+  searchInput.value = "";
+  searchTerm = "";
+  applySearch();
+});
+
+// frequency inputs + slider
+const freqMinEl = document.getElementById("freq-min");
+const freqMaxEl = document.getElementById("freq-max");
+const freqSlider = document.getElementById("freq-slider");
+let freqMax = 99;
+
+function updateFreqRange() {
+  let maxN;
+  if (currentPres === "Todos") {
+    const agg = {};
+    UNI_RAW.forEach(d => { agg[d.w] = (agg[d.w] || 0) + d.n; });
+    maxN = d3.max(Object.values(agg)) || 1;
+  } else {
+    const words = UNI_RAW.filter(d => d.p === currentPres);
+    maxN = words.length ? d3.max(words, d => d.n) : 1;
+  }
+  freqMaxEl.value = maxN;
+  freqMinEl.value = 0;
+  freqSlider.max = maxN;
+  freqSlider.value = 0;
+  freqMin = 0;
+  freqMax = maxN;
+}
+
+// Build unigram frequency lookup
+function getUnigramFreqs(pres) {
+  const freqs = {};
+  if (pres === "Todos") {
+    UNI_RAW.forEach(d => { freqs[d.w] = (freqs[d.w] || 0) + d.n; });
+  } else {
+    UNI_RAW.filter(d => d.p === pres).forEach(d => { freqs[d.w] = d.n; });
+  }
+  return freqs;
+}
+
+function applyFreqFilter() {
+  freqMin = +freqMinEl.value || 0;
+  freqMax = +freqMaxEl.value || 99;
+  buildGraph();
+  buildWordCloud();
+  if (searchTerm) applySearch();
+}
+
+freqMinEl.addEventListener("change", () => {
+  freqSlider.value = freqMinEl.value;
+  applyFreqFilter();
+});
+freqMaxEl.addEventListener("change", applyFreqFilter);
+freqSlider.addEventListener("input", () => {
+  freqMinEl.value = freqSlider.value;
+  applyFreqFilter();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  PAGE NAVIGATION
+// ═══════════════════════════════════════════════════════════
+const page1El = document.getElementById("page1-content");
+const page2El = document.getElementById("page2-content-wrapper");
+const pnPrev  = document.getElementById("pn-prev");
+const pnNext  = document.getElementById("pn-next");
+const pnLabel = document.getElementById("pn-label");
+const controlsEl = document.getElementById("controls");
+
+const cardPres = document.querySelector(".ctrl-card.card-pres");
+
+const controlsRow = document.getElementById("controls-row");
+
+function setPage(p) {
+  currentPage = p;
+  if (p === 1) {
+    page1El.style.display = "flex";
+    page2El.style.display = "none";
+    controlsRow.style.display = "block";
+    cardPres.style.display = "flex";
+    pnPrev.classList.add("disabled");
+    pnNext.classList.remove("disabled");
+    update();
+  } else {
+    page1El.style.display = "none";
+    page2El.style.display = "flex";
+    controlsRow.style.display = "none";
+    pnPrev.classList.remove("disabled");
+    pnNext.classList.add("disabled");
+    buildPage2();
+  }
+  pnLabel.textContent = p + " de 2";
+}
+
+pnPrev.addEventListener("click", () => { if (currentPage > 1) setPage(currentPage - 1); });
+pnNext.addEventListener("click", () => { if (currentPage < 2) setPage(currentPage + 1); });
+// init page nav state
+pnPrev.classList.add("disabled");
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+function getOrientation(pres) {
+  if (pres === "Todos") return "centro";
+  const rec = UNI_RAW.find(d => d.p === pres);
+  return rec ? rec.o : "centro";
+}
+
+function getBaseColor(pres) {
+  if (pres === "Todos") return "#7EA8C9";
+  return ORIENT_COLOR[getOrientation(pres)] || "#999";
+}
+
+function edgeColorPalette(base) {
+  const h = d3.hsl(d3.color(base));
+  return [
+    base,
+    h.copy({h: h.h - 30, l: Math.max(0, h.l - 0.1)}).formatHex(),
+    h.copy({h: h.h + 40, l: Math.min(0.7, h.l + 0.05)}).formatHex(),
+    h.copy({l: Math.max(0, h.l - 0.2)}).formatHex(),
+    h.copy({h: h.h + 80, s: Math.min(1, h.s + 0.1)}).formatHex(),
+    h.copy({h: h.h - 60, l: Math.min(0.6, h.l + 0.1)}).formatHex(),
+    h.copy({l: Math.min(0.75, h.l + 0.2)}).formatHex()
+  ];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FORCE GRAPH
+// ═══════════════════════════════════════════════════════════
+const svg = d3.select("#graph-svg");
+const graphG = svg.append("g");
+const zoomBehavior = d3.zoom().scaleExtent([0.3, 5]).on("zoom", e => graphG.attr("transform", e.transform));
+svg.call(zoomBehavior);
+
+function applyAdaptiveZoom() {
+  const container = document.querySelector("#panel-left .panel-body");
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  // Fewer nodes = more zoom, more nodes = less zoom
+  const s = currentTop <= 10 ? 1.5 : currentTop <= 15 ? 1.3 : currentTop <= 20 ? 1.15 : 1.0;
+  const tx = (W - W * s) / 2;
+  const ty = (H - H * s) / 2;
+  svg.transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(s));
+}
+
+function buildGraph() {
+  const container = document.querySelector("#panel-left .panel-body");
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  svg.attr("viewBox", [0, 0, W, H]);
+
+  // get edges — "Todos" aggregates all presidents
+  let edges;
+  if (currentPres === "Todos") {
+    // Aggregate: sum counts for same bigram pairs across presidents
+    const agg = {};
+    BI_RAW.forEach(d => {
+      const key = d.w1 + "|" + d.w2;
+      if (!agg[key]) agg[key] = { w1: d.w1, w2: d.w2, n: 0, p: "Todos", y: 0, c: "", o: "" };
+      agg[key].n += d.n;
+    });
+    edges = Object.values(agg).sort((a, b) => b.n - a.n);
+  } else {
+    edges = BI_RAW.filter(d => d.p === currentPres).sort((a,b) => b.n - a.n);
+  }
+  edges = edges.slice(0, currentTop);
+
+  // filter by unigram frequency
+  const uniFreqs = getUnigramFreqs(currentPres);
+  edges = edges.filter(d => {
+    const f1 = uniFreqs[d.w1] || 0;
+    const f2 = uniFreqs[d.w2] || 0;
+    return (f1 >= freqMin && f1 <= freqMax) || (f2 >= freqMin && f2 <= freqMax);
+  });
+
+  // build node set with degree + weight (sum of edge counts)
+  const nodeMap = new Map();
+  edges.forEach(e => {
+    if (!nodeMap.has(e.w1)) nodeMap.set(e.w1, { id: e.w1, degree: 0, weight: 0 });
+    if (!nodeMap.has(e.w2)) nodeMap.set(e.w2, { id: e.w2, degree: 0, weight: 0 });
+    nodeMap.get(e.w1).degree++;
+    nodeMap.get(e.w2).degree++;
+    nodeMap.get(e.w1).weight += e.n;
+    nodeMap.get(e.w2).weight += e.n;
+  });
+  const nodes = Array.from(nodeMap.values());
+
+  const links = edges.map((e, i) => ({
+    source: e.w1,
+    target: e.w2,
+    value: e.n,
+    idx: i
+  }));
+
+  const base = getBaseColor(currentPres);
+  const palette = edgeColorPalette(base);
+
+  // scales — importance = degree + weight combined
+  const maxDeg = d3.max(nodes, d => d.degree) || 1;
+  const maxWeight = d3.max(nodes, d => d.weight) || 1;
+  nodes.forEach(d => d.importance = (d.degree / maxDeg + d.weight / maxWeight) / 2);
+  const rScale = d3.scaleSqrt().domain([1, maxDeg]).range([3, 8]);
+  const maxVal = d3.max(links, d => d.value) || 1;
+  const wScale = d3.scaleLinear().domain([1, maxVal]).range([1, 3.5]);
+
+  // clear & add arrow marker defs
+  graphG.selectAll("*").remove();
+  const defs = graphG.append("defs");
+  palette.forEach((col, i) => {
+    defs.append("marker")
+      .attr("id", "arrow-" + i)
+      .attr("viewBox", "0 -4 10 8")
+      .attr("refX", 0)
+      .attr("refY", 0)
+      .attr("markerWidth", 12)
+      .attr("markerHeight", 12)
+      .attr("markerUnits", "userSpaceOnUse")
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M0,-3.5L10,0L0,3.5")
+      .attr("fill", col)
+      .attr("opacity", 0.7);
+  });
+
+  if (simulation) simulation.stop();
+
+  const R = Math.min(W, H) * 0.38;
+  // Nodos con más peso+grado al centro, periféricos afuera
+  simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(55))
+    .force("charge", d3.forceManyBody().strength(-90))
+    .force("center", d3.forceCenter(W / 2, H / 2))
+    .force("radial", d3.forceRadial(d => R * (1 - d.importance), W / 2, H / 2).strength(0.5))
+    .force("collision", d3.forceCollide().radius(d => rScale(d.degree) + 10));
+
+  // edges (curved)
+  const link = graphG.selectAll(".link")
+    .data(links)
+    .join("path")
+    .attr("class", "link")
+    .attr("stroke", (d, i) => palette[i % palette.length])
+    .attr("stroke-width", d => wScale(d.value))
+    .attr("marker-end", (d, i) => `url(#arrow-${i % palette.length})`);
+
+  // nodes
+  const node = graphG.selectAll(".node")
+    .data(nodes)
+    .join("g")
+    .attr("class", "node")
+    .call(d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended));
+
+  node.append("circle")
+    .attr("r", d => rScale(d.degree))
+    .attr("fill", base)
+    .attr("opacity", 0.85);
+
+  node.append("text")
+    .text(d => d.id)
+    .attr("dx", d => rScale(d.degree) + 3)
+    .attr("dy", 3);
+
+  // hover
+  const tooltip = document.getElementById("tooltip");
+
+  node.on("mouseover", function(event, d) {
+    const connected = new Set();
+    connected.add(d.id);
+    links.forEach(l => {
+      const sid = typeof l.source === "object" ? l.source.id : l.source;
+      const tid = typeof l.target === "object" ? l.target.id : l.target;
+      if (sid === d.id) connected.add(tid);
+      if (tid === d.id) connected.add(sid);
+    });
+    node.classed("dimmed", n => !connected.has(n.id));
+    link.classed("dimmed", l => {
+      const sid = typeof l.source === "object" ? l.source.id : l.source;
+      const tid = typeof l.target === "object" ? l.target.id : l.target;
+      return sid !== d.id && tid !== d.id;
+    });
+    tooltip.style.opacity = 1;
+    tooltip.textContent = `${d.id} (conexiones: ${d.degree})`;
+    tooltip.style.left = event.clientX + 12 + "px";
+    tooltip.style.top = event.clientY - 10 + "px";
+  })
+  .on("mousemove", function(event) {
+    tooltip.style.left = event.clientX + 12 + "px";
+    tooltip.style.top = event.clientY - 10 + "px";
+  })
+  .on("mouseout", function() {
+    node.classed("dimmed", false);
+    link.classed("dimmed", false);
+    tooltip.style.opacity = 0;
+  });
+
+  simulation.on("tick", () => {
+    // curved links
+    link.attr("d", d => {
+      const sx = d.source.x, sy = d.source.y;
+      const tx = d.target.x, ty = d.target.y;
+      const dx = tx - sx, dy = ty - sy;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      // start from source node edge
+      const sr = rScale(d.source.degree) + 1;
+      const ox = sx + (dx / dist) * sr;
+      const oy = sy + (dy / dist) * sr;
+      // end before target node edge, leaving room for arrow
+      const tr = rScale(d.target.degree) + 12;
+      const ex = tx - (dx / dist) * tr;
+      const ey = ty - (dy / dist) * tr;
+      const dr = dist * (1.2 + (d.idx % 3) * 0.3);
+      const sweep = d.idx % 2;
+      return `M${ox},${oy}A${dr},${dr} 0 0,${sweep} ${ex},${ey}`;
+    });
+    node.attr("transform", d => {
+      d.x = Math.max(20, Math.min(W - 20, d.x));
+      d.y = Math.max(20, Math.min(H - 20, d.y));
+      return `translate(${d.x},${d.y})`;
+    });
+  });
+
+  function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x; d.fy = d.y;
+  }
+  function dragged(event, d) {
+    d.fx = event.x; d.fy = event.y;
+  }
+  function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null; d.fy = null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WORD CLOUD  (spiral placement)
+// ═══════════════════════════════════════════════════════════
+function buildWordCloud() {
+  const outer = document.getElementById("wordcloud");
+  outer.innerHTML = "";
+  const container = document.createElement("div");
+  container.id = "wc-inner";
+  outer.appendChild(container);
+  const W = outer.clientWidth;
+  const H = outer.clientHeight;
+  if (W === 0 || H === 0) return;
+
+  // Zoom & pan via mouse
+  let wcScale = 1, wcX = 0, wcY = 0, dragging = false, startX, startY;
+  outer.addEventListener("wheel", e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    wcScale = Math.max(0.3, Math.min(5, wcScale * delta));
+    container.style.transform = `translate(${wcX}px,${wcY}px) scale(${wcScale})`;
+  }, { passive: false });
+  outer.addEventListener("mousedown", e => { if (e.button === 0) { dragging = true; startX = e.clientX - wcX; startY = e.clientY - wcY; }});
+  outer.addEventListener("mousemove", e => { if (dragging) { wcX = e.clientX - startX; wcY = e.clientY - startY; container.style.transform = `translate(${wcX}px,${wcY}px) scale(${wcScale})`; }});
+  outer.addEventListener("mouseup", () => dragging = false);
+  outer.addEventListener("mouseleave", () => dragging = false);
+
+  let words;
+  if (currentPres === "Todos") {
+    const agg = {};
+    UNI_RAW.forEach(d => { agg[d.w] = (agg[d.w] || 0) + d.n; });
+    words = Object.entries(agg).map(([w, n]) => ({ w, n })).filter(d => d.n >= freqMin && d.n <= freqMax).sort((a, b) => b.n - a.n);
+  } else {
+    words = UNI_RAW.filter(d => d.p === currentPres && d.n >= freqMin && d.n <= freqMax).sort((a,b) => b.n - a.n);
+  }
+  words = words.slice(0, currentTop);
+
+  const maxN = words[0] ? words[0].n : 1;
+  const minN = words[words.length - 1] ? words[words.length - 1].n : 1;
+
+  // font size scale — adaptive to number of words
+  const maxFont = words.length <= 10 ? 58 : words.length <= 15 ? 50 : words.length <= 20 ? 44 : 36;
+  const minFont = words.length <= 15 ? 13 : 10;
+  const fScale = d3.scaleSqrt().domain([minN, maxN]).range([minFont, maxFont]).clamp(true);
+
+  // Step 1: render all spans hidden to measure real sizes via getBoundingClientRect
+  const spans = [];
+  words.forEach((wd, i) => {
+    const fontSize = fScale(wd.n);
+    const span = document.createElement("span");
+    span.className = "wc-word";
+    span.textContent = wd.w;
+    span.style.fontSize = fontSize + "px";
+    span.style.color = WC_COLORS[i % WC_COLORS.length];
+    span.style.lineHeight = "1.1";
+    span.style.left = "-9999px";
+    span.style.top = "-9999px";
+    span.dataset.word = wd.w;
+    span.title = `${wd.w}: ${wd.n}`;
+    container.appendChild(span);
+    spans.push({ span, wd, fontSize, idx: i });
+  });
+
+  // Step 2: measure and place using spiral
+  requestAnimationFrame(() => {
+    const placed = [];
+    let placedCount = 0;
+    const cx = W / 2, cy = H / 2;
+    const PAD = 2;
+
+    function overlaps(rect) {
+      for (const r of placed) {
+        if (rect.x < r.x + r.w + PAD && rect.x + rect.w + PAD > r.x &&
+            rect.y < r.y + r.h + PAD && rect.y + rect.h + PAD > r.y) return true;
+      }
+      return false;
+    }
+
+    spans.forEach(({ span, wd, fontSize, idx }) => {
+      const rect = span.getBoundingClientRect();
+      const bw = Math.ceil(rect.width) + 1;
+      const bh = Math.ceil(rect.height) + 1;
+
+      let px, py, found = false;
+      for (let t = 0; t < 2500; t++) {
+        const angle = t * 0.13;
+        const radius = 0.5 + t * 0.28;
+        px = cx + radius * Math.cos(angle) - bw / 2;
+        py = cy + radius * Math.sin(angle) - bh / 2;
+
+        const r = { x: px, y: py, w: bw, h: bh };
+        if (px >= 0 && py >= 0 && px + bw <= W && py + bh <= H && !overlaps(r)) {
+          placed.push(r);
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        span.style.left = px + "px";
+        span.style.top = py + "px";
+        const delay = placedCount * 15;
+        setTimeout(() => span.classList.add("visible"), delay);
+        placedCount++;
+      } else {
+        span.remove();
+      }
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SEARCH HIGHLIGHT
+// ═══════════════════════════════════════════════════════════
+function applySearch() {
+  if (!searchTerm) {
+    // remove all highlights/dims
+    document.querySelectorAll(".wc-word").forEach(el => {
+      el.classList.remove("dimmed", "highlighted");
+    });
+    d3.selectAll(".node").classed("dimmed", false).classed("highlighted", false);
+    d3.selectAll(".link").classed("dimmed", false);
+    return;
+  }
+  // word cloud
+  document.querySelectorAll(".wc-word").forEach(el => {
+    const w = el.dataset.word;
+    if (w.includes(searchTerm)) {
+      el.classList.remove("dimmed");
+      el.classList.add("highlighted");
+    } else {
+      el.classList.add("dimmed");
+      el.classList.remove("highlighted");
+    }
+  });
+  // graph
+  const matchNodes = new Set();
+  d3.selectAll(".node").each(function(d) {
+    if (d.id.includes(searchTerm)) matchNodes.add(d.id);
+  });
+  // also include neighbors
+  const connected = new Set(matchNodes);
+  d3.selectAll(".link").each(function(d) {
+    const sid = typeof d.source === "object" ? d.source.id : d.source;
+    const tid = typeof d.target === "object" ? d.target.id : d.target;
+    if (matchNodes.has(sid)) connected.add(tid);
+    if (matchNodes.has(tid)) connected.add(sid);
+  });
+  if (matchNodes.size > 0) {
+    d3.selectAll(".node").classed("dimmed", d => !connected.has(d.id));
+    d3.selectAll(".node").classed("highlighted", d => matchNodes.has(d.id));
+    d3.selectAll(".link").classed("dimmed", d => {
+      const sid = typeof d.source === "object" ? d.source.id : d.source;
+      const tid = typeof d.target === "object" ? d.target.id : d.target;
+      return !matchNodes.has(sid) && !matchNodes.has(tid);
+    });
+  } else {
+    d3.selectAll(".node").classed("dimmed", true).classed("highlighted", false);
+    d3.selectAll(".link").classed("dimmed", true);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PAGE 2: 3×3 GRID OF ALL BIGRAM NETWORKS
+// ═══════════════════════════════════════════════════════════
+let page2Built = false;
+
+function getPresYear(pres) {
+  const rec = UNI_RAW.find(d => d.p === pres);
+  return rec ? rec.y : "";
+}
+
+// Expand a mini panel into overlay
+function expandPanel(pres) {
+  const overlay = document.getElementById("panel-overlay");
+  const header = document.getElementById("expanded-header");
+  const title = document.getElementById("expanded-title");
+  const body = document.getElementById("expanded-body");
+  body.innerHTML = "";
+  title.textContent = pres + " (" + getPresYear(pres) + ")";
+  header.style.background = getBaseColor(pres);
+  overlay.classList.add("active");
+
+  requestAnimationFrame(() => {
+    const W = body.clientWidth;
+    const H = body.clientHeight;
+    if (!W || !H) return;
+
+    const base = getBaseColor(pres);
+    const palette = edgeColorPalette(base);
+    const uniFreqs = getUnigramFreqs(pres);
+    let edges = BI_RAW.filter(d => d.p === pres).sort((a,b) => b.n - a.n).slice(0, currentTop);
+    edges = edges.filter(d => {
+      const f1 = uniFreqs[d.w1] || 0;
+      const f2 = uniFreqs[d.w2] || 0;
+      return (f1 >= freqMin && f1 <= freqMax) || (f2 >= freqMin && f2 <= freqMax);
+    });
+
+    const nodeMap = new Map();
+    edges.forEach(e => {
+      if (!nodeMap.has(e.w1)) nodeMap.set(e.w1, { id: e.w1, degree: 0, weight: 0 });
+      if (!nodeMap.has(e.w2)) nodeMap.set(e.w2, { id: e.w2, degree: 0, weight: 0 });
+      nodeMap.get(e.w1).degree++; nodeMap.get(e.w2).degree++;
+      nodeMap.get(e.w1).weight += e.n; nodeMap.get(e.w2).weight += e.n;
+    });
+    const nodes = Array.from(nodeMap.values());
+    const links = edges.map((e, i) => ({ source: e.w1, target: e.w2, value: e.n, idx: i }));
+    if (!nodes.length) return;
+
+    const maxDeg = d3.max(nodes, d => d.degree) || 1;
+    const maxWt = d3.max(nodes, d => d.weight) || 1;
+    nodes.forEach(d => d.importance = (d.degree / maxDeg + d.weight / maxWt) / 2);
+    const rScale = d3.scaleSqrt().domain([1, maxDeg]).range([3, 8]);
+    const maxVal = d3.max(links, d => d.value) || 1;
+    const wScale = d3.scaleLinear().domain([1, maxVal]).range([1, 3.5]);
+
+    const svgEl = d3.select(body).append("svg").attr("viewBox", [0, 0, W, H]);
+    const g = svgEl.append("g");
+    svgEl.call(d3.zoom().scaleExtent([0.3, 5]).on("zoom", e => g.attr("transform", e.transform)));
+
+    const defs = g.append("defs");
+    palette.forEach((col, i) => {
+      defs.append("marker").attr("id", "exp-arrow-" + i)
+        .attr("viewBox", "0 -4 10 8").attr("refX", 0).attr("refY", 0)
+        .attr("markerWidth", 12).attr("markerHeight", 12)
+        .attr("markerUnits", "userSpaceOnUse").attr("orient", "auto")
+        .append("path").attr("d", "M0,-3.5L10,0L0,3.5").attr("fill", col).attr("opacity", 0.7);
+    });
+
+    const R = Math.min(W, H) * 0.35;
+    const sim = d3.forceSimulation(nodes)
+      .force("link", d3.forceLink(links).id(d => d.id).distance(55))
+      .force("charge", d3.forceManyBody().strength(-90))
+      .force("center", d3.forceCenter(W / 2, H / 2))
+      .force("radial", d3.forceRadial(d => R * (1 - d.importance), W / 2, H / 2).strength(0.5))
+      .force("collision", d3.forceCollide().radius(d => rScale(d.degree) + 10));
+
+    const eLink = g.selectAll(".link").data(links).join("path").attr("class", "link")
+      .attr("fill", "none").attr("stroke", (d, i) => palette[i % palette.length])
+      .attr("stroke-width", d => wScale(d.value)).attr("marker-end", (d, i) => `url(#exp-arrow-${i % palette.length})`);
+
+    const eNode = g.selectAll(".node").data(nodes).join("g").attr("class", "node");
+    eNode.append("circle").attr("r", d => rScale(d.degree)).attr("fill", base).attr("opacity", 0.85).attr("stroke", "#fff").attr("stroke-width", 1);
+    eNode.append("text").text(d => d.id).attr("dx", d => rScale(d.degree) + 3).attr("dy", 3).attr("font-size", "9.5px").attr("fill", "#555").attr("font-weight", 500).attr("pointer-events", "none");
+
+    eNode.call(d3.drag()
+      .on("start", (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag", (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on("end", (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    eNode.on("mouseover", function(ev, d) {
+      const c = new Set([d.id]);
+      links.forEach(l => { const s = typeof l.source === "object" ? l.source.id : l.source; const t = typeof l.target === "object" ? l.target.id : l.target; if (s === d.id) c.add(t); if (t === d.id) c.add(s); });
+      eNode.classed("dimmed", n => !c.has(n.id)); eLink.classed("dimmed", l => { const s = typeof l.source === "object" ? l.source.id : l.source; const t = typeof l.target === "object" ? l.target.id : l.target; return s !== d.id && t !== d.id; });
+    }).on("mouseout", () => { eNode.classed("dimmed", false); eLink.classed("dimmed", false); });
+
+    sim.on("tick", () => {
+      eLink.attr("d", d => {
+        const sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+        const dx = tx - sx, dy = ty - sy, dist = Math.sqrt(dx*dx+dy*dy) || 1;
+        const sr = rScale(d.source.degree)+1, ox = sx+(dx/dist)*sr, oy = sy+(dy/dist)*sr;
+        const tr = rScale(d.target.degree)+12, ex = tx-(dx/dist)*tr, ey = ty-(dy/dist)*tr;
+        const dr = dist*(1.2+(d.idx%3)*0.3), sweep = d.idx%2;
+        return `M${ox},${oy}A${dr},${dr} 0 0,${sweep} ${ex},${ey}`;
+      });
+      eNode.attr("transform", d => { d.x = Math.max(15, Math.min(W-15, d.x)); d.y = Math.max(15, Math.min(H-15, d.y)); return `translate(${d.x},${d.y})`; });
+    });
+
+    // Stop simulation on close
+    overlay._sim = sim;
+  });
+}
+
+document.getElementById("expanded-close").addEventListener("click", () => {
+  const overlay = document.getElementById("panel-overlay");
+  if (overlay._sim) overlay._sim.stop();
+  overlay.classList.remove("active");
+});
+document.getElementById("panel-overlay").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) {
+    if (e.currentTarget._sim) e.currentTarget._sim.stop();
+    e.currentTarget.classList.remove("active");
+  }
+});
+
+function buildPage2() {
+  const container = document.getElementById("page2-grid");
+  container.innerHTML = "";
+  page2Built = true;
+
+  // Build sidebar with search/frequency/top filters
+  const sidebar = document.getElementById("page2-sidebar");
+  sidebar.innerHTML = `
+    <div class="ctrl-card">
+      <span class="ctrl-label">Búsqueda por término</span>
+      <div class="ctrl-content"><input id="search-input-p2" type="text" placeholder="término..."></div>
+    </div>
+    <div class="ctrl-card">
+      <span class="ctrl-label">Frecuencia término</span>
+      <div class="ctrl-content freq-row">
+        <input type="number" id="freq-min-p2" min="0" value="0" class="freq-num">
+        <input type="range" id="freq-slider-p2" min="0" max="10" step="1" value="0" class="freq-range">
+        <input type="number" id="freq-max-p2" min="0" value="99" class="freq-num">
+      </div>
+    </div>
+    <div class="ctrl-card">
+      <span class="ctrl-label">Top</span>
+      <div class="ctrl-content">
+        <select id="top-select-p2">
+          <option value="10" selected>10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+        </select>
+      </div>
+    </div>`;
+  // Wire up sidebar controls for page 2
+  document.getElementById("search-input-p2").addEventListener("input", e => {
+    searchTerm = e.target.value.trim().toLowerCase();
+    applySearch();
+  });
+  const p2TopSel = document.getElementById("top-select-p2");
+  p2TopSel.value = currentTop;
+  p2TopSel.addEventListener("change", e => {
+    currentTop = +e.target.value;
+    page2Built = false;
+    buildPage2();
+  });
+  const p2FreqMin = document.getElementById("freq-min-p2");
+  const p2FreqMax = document.getElementById("freq-max-p2");
+  const p2FreqSlider = document.getElementById("freq-slider-p2");
+  const allUniMax = d3.max(UNI_RAW, d => d.n) || 1;
+  p2FreqMin.value = freqMin;
+  p2FreqMax.value = freqMax;
+  p2FreqSlider.max = allUniMax;
+  p2FreqSlider.value = freqMin;
+  function applyP2Freq() {
+    freqMin = +p2FreqMin.value || 0;
+    freqMax = +p2FreqMax.value || 99;
+    page2Built = false;
+    buildPage2();
+  }
+  p2FreqMin.addEventListener("change", () => { p2FreqSlider.value = p2FreqMin.value; applyP2Freq(); });
+  p2FreqMax.addEventListener("change", applyP2Freq);
+  p2FreqSlider.addEventListener("input", () => { p2FreqMin.value = p2FreqSlider.value; applyP2Freq(); });
+
+  PRESIDENTS.forEach(pres => {
+    const panel = document.createElement("div");
+    panel.className = "mini-panel";
+
+    const header = document.createElement("div");
+    header.className = "mini-header";
+    header.textContent = pres + " (" + getPresYear(pres) + ")";
+    header.style.background = getBaseColor(pres);
+    panel.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "mini-body";
+    panel.appendChild(body);
+
+    // Click to expand
+    panel.addEventListener("click", (e) => {
+      if (e.target.closest(".node")) return; // don't expand when dragging nodes
+      expandPanel(pres);
+    });
+
+    container.appendChild(panel);
+  });
+
+  // Use requestAnimationFrame to ensure DOM layout is computed
+  requestAnimationFrame(() => {
+    PRESIDENTS.forEach((pres, idx) => {
+      const body = container.querySelectorAll(".mini-body")[idx];
+      const W = body.clientWidth;
+      const H = body.clientHeight;
+      if (W === 0 || H === 0) return;
+
+      // Build edges & nodes — same filters as page 1
+      const uniFreqs = getUnigramFreqs(pres);
+      const p2Top = document.getElementById("top-select-p2");
+      let edges = BI_RAW.filter(d => d.p === pres).sort((a,b) => b.n - a.n).slice(0, p2Top ? +p2Top.value : 10);
+      edges = edges.filter(d => {
+        const f1 = uniFreqs[d.w1] || 0;
+        const f2 = uniFreqs[d.w2] || 0;
+        return (f1 >= freqMin && f1 <= freqMax) || (f2 >= freqMin && f2 <= freqMax);
+      });
+      const nodeMap = new Map();
+      edges.forEach(e => {
+        if (!nodeMap.has(e.w1)) nodeMap.set(e.w1, { id: e.w1, degree: 0, weight: 0 });
+        if (!nodeMap.has(e.w2)) nodeMap.set(e.w2, { id: e.w2, degree: 0, weight: 0 });
+        nodeMap.get(e.w1).degree++;
+        nodeMap.get(e.w2).degree++;
+        nodeMap.get(e.w1).weight += e.n;
+        nodeMap.get(e.w2).weight += e.n;
+      });
+      const nodes = Array.from(nodeMap.values());
+      const links = edges.map((e, i) => ({
+        source: e.w1,
+        target: e.w2,
+        value: e.n,
+        idx: i
+      }));
+
+      if (nodes.length === 0) return;
+
+      const base = getBaseColor(pres);
+      const palette = edgeColorPalette(base);
+
+      // Scales
+      const maxDeg = d3.max(nodes, d => d.degree) || 1;
+      const maxWt = d3.max(nodes, d => d.weight) || 1;
+      nodes.forEach(d => d.importance = (d.degree / maxDeg + d.weight / maxWt) / 2);
+      const rScale = d3.scaleSqrt().domain([1, maxDeg]).range([2, 9]);
+      const maxVal = d3.max(links, d => d.value) || 1;
+      const wScale = d3.scaleLinear().domain([1, maxVal]).range([0.8, 4]);
+
+      // Create SVG with zoom
+      const svgEl = d3.select(body).append("svg")
+        .attr("viewBox", [0, 0, W, H]);
+      const g = svgEl.append("g");
+      svgEl.call(d3.zoom().scaleExtent([0.3, 5]).on("zoom", e => g.attr("transform", e.transform)));
+
+      // Arrow markers (smaller)
+      const defs = g.append("defs");
+      palette.forEach((col, i) => {
+        defs.append("marker")
+          .attr("id", "mini-arrow-" + pres.replace(/\s/g,"") + "-" + i)
+          .attr("viewBox", "0 -3 8 6")
+          .attr("refX", 0)
+          .attr("refY", 0)
+          .attr("markerWidth", 8)
+          .attr("markerHeight", 8)
+          .attr("markerUnits", "userSpaceOnUse")
+          .attr("orient", "auto")
+          .append("path")
+          .attr("d", "M0,-2.5L8,0L0,2.5")
+          .attr("fill", col)
+          .attr("opacity", 0.7);
+      });
+
+      // Force simulation — animated like page 1
+      const miniR = Math.min(W, H) * 0.32;
+      const sim = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(22))
+        .force("charge", d3.forceManyBody().strength(-30))
+        .force("center", d3.forceCenter(W / 2, H / 2))
+        .force("radial", d3.forceRadial(d => miniR * (1 - d.importance), W / 2, H / 2).strength(0.5))
+        .force("collision", d3.forceCollide().radius(d => rScale(d.degree) + 3));
+
+      // Draw edges
+      const mLink = g.selectAll(".link")
+        .data(links)
+        .join("path")
+        .attr("class", "link")
+        .attr("fill", "none")
+        .attr("stroke", (d, i) => palette[i % palette.length])
+        .attr("stroke-width", d => wScale(d.value))
+        .attr("stroke-opacity", 0.5)
+        .attr("marker-end", (d, i) => `url(#mini-arrow-${pres.replace(/\s/g,"")}-${i % palette.length})`);
+
+      // Draw nodes
+      const mNode = g.selectAll(".node")
+        .data(nodes)
+        .join("g")
+        .attr("class", "node");
+
+      mNode.append("circle")
+        .attr("r", d => rScale(d.degree))
+        .attr("fill", base)
+        .attr("opacity", 0.85)
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 0.8);
+
+      mNode.append("text")
+        .text(d => d.id)
+        .attr("dx", d => rScale(d.degree) + 2)
+        .attr("dy", 2.5)
+        .attr("font-size", "7.5px")
+        .attr("fill", "#555")
+        .attr("font-weight", 500)
+        .attr("pointer-events", "none");
+
+      // Drag
+      mNode.call(d3.drag()
+        .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on("end", (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+      // Hover highlight
+      mNode.on("mouseover", function(event, d) {
+        const connected = new Set([d.id]);
+        links.forEach(l => {
+          const sid = typeof l.source === "object" ? l.source.id : l.source;
+          const tid = typeof l.target === "object" ? l.target.id : l.target;
+          if (sid === d.id) connected.add(tid);
+          if (tid === d.id) connected.add(sid);
+        });
+        mNode.classed("dimmed", n => !connected.has(n.id));
+        mLink.classed("dimmed", l => {
+          const sid = typeof l.source === "object" ? l.source.id : l.source;
+          const tid = typeof l.target === "object" ? l.target.id : l.target;
+          return sid !== d.id && tid !== d.id;
+        });
+      }).on("mouseout", function() {
+        mNode.classed("dimmed", false);
+        mLink.classed("dimmed", false);
+      });
+
+      sim.on("tick", () => {
+        mLink.attr("d", d => {
+          const sx = d.source.x, sy = d.source.y;
+          const tx = d.target.x, ty = d.target.y;
+          const dx = tx - sx, dy = ty - sy;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const sr = rScale(d.source.degree) + 1;
+          const ox = sx + (dx / dist) * sr;
+          const oy = sy + (dy / dist) * sr;
+          const tr = rScale(d.target.degree) + 9;
+          const ex = tx - (dx / dist) * tr;
+          const ey = ty - (dy / dist) * tr;
+          const dr = dist * (1.2 + (d.idx % 3) * 0.3);
+          const sweep = d.idx % 2;
+          return `M${ox},${oy}A${dr},${dr} 0 0,${sweep} ${ex},${ey}`;
+        });
+        mNode.attr("transform", d => {
+          d.x = Math.max(12, Math.min(W - 12, d.x));
+          d.y = Math.max(12, Math.min(H - 12, d.y));
+          return `translate(${d.x},${d.y})`;
+        });
+      });
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UPDATE
+// ═══════════════════════════════════════════════════════════
+function update() {
+  updateFreqRange();
+  buildGraph();
+  buildWordCloud();
+  setTimeout(applyAdaptiveZoom, 300);
+  if (searchTerm) applySearch();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener("resize", () => {
+  if (currentPage === 1) update();
+  else { page2Built = false; buildPage2(); }
+});
+update();
+</script>
+</body>
+</html>
