@@ -19,7 +19,7 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 #panel-left{flex:3;display:flex;flex-direction:column;background:#fff;border-radius:10px;border:1px solid #e0ddd8;overflow:hidden}
 #panel-right{flex:2;display:flex;flex-direction:column;background:#fff;border-radius:10px;border:1px solid #e0ddd8;overflow:hidden}
 
-.panel-header{height:30px;display:flex;align-items:center;justify-content:center;padding:0 12px;background:#D95F3B;color:#fff;font-size:13px;font-weight:600;letter-spacing:.3px;flex-shrink:0}
+.panel-header{height:30px;display:flex;align-items:center;justify-content:center;padding:0 12px;background:#556B2F;color:#fff;font-size:13px;font-weight:600;letter-spacing:.3px;flex-shrink:0}
 .panel-body{flex:1;position:relative;overflow:hidden;min-height:0}
 
 #graph-svg{width:100%;height:100%}
@@ -32,7 +32,7 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 #ctrl-left{flex:3;min-width:0}
 #ctrl-right{flex:2;min-width:0}
 .ctrl-card{background:#fff;border-radius:10px;border:1px solid #e0ddd8;display:flex;flex-direction:column;min-width:0;overflow:hidden}
-.ctrl-card .ctrl-label{font-size:10px;color:#fff;font-weight:600;text-transform:none;letter-spacing:.3px;background:#D95F3B;padding:5px 12px;margin:0;border-radius:10px 10px 0 0;text-align:center}
+.ctrl-card .ctrl-label{font-size:9px;color:#fff;font-weight:600;text-transform:none;letter-spacing:.3px;background:#556B2F;padding:4px 12px;margin:0;border-radius:10px 10px 0 0;text-align:center}
 .ctrl-card .ctrl-content{padding:5px 12px;display:flex;align-items:center;gap:8px;flex:1}
 .ctrl-card.card-pres{flex:2.3;overflow:hidden}
 .ctrl-card.card-pres .pres-pills{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
@@ -40,13 +40,13 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 .ctrl-card.card-slider{flex:5}
 .ctrl-card.card-top{flex:3}
 .pres-pills button{font-size:10.5px;padding:4px 10px;border:1px solid #ccc;background:#fff;color:#444;cursor:pointer;font-weight:500;white-space:nowrap;transition:all .15s;border-radius:6px}
-.pres-pills button.active{background:#D95F3B;color:#fff;border-color:#D95F3B;font-weight:700}
+.pres-pills button.active{background:#556B2F;color:#fff;border-color:#556B2F;font-weight:700}
 .pres-pills button:hover:not(.active){background:#f3f3f3}
 .search-wrap{position:relative;width:100%}
 #search-input{font-size:11px;padding:4px 24px 4px 8px;border:1px solid #ddd;border-radius:6px;width:100%;outline:none;background:#fafafa}
-#search-input:focus{border-color:#D95F3B;background:#fff}
+#search-input:focus{border-color:#556B2F;background:#fff}
 .search-clear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:16px;height:16px;border:none;background:#ddd;color:#fff;font-size:10px;line-height:16px;text-align:center;border-radius:50%;cursor:pointer;padding:0}
-.search-clear:hover{background:#D95F3B}
+.search-clear:hover{background:#556B2F}
 #top-select{font-size:11px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;outline:none;background:#fafafa;width:100%}
 
 /* ── Footer ───────────────────────────────────────────── */
@@ -56,7 +56,7 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 .wc-word{position:absolute;white-space:nowrap;cursor:default;font-weight:600;transition:opacity .3s;opacity:0}
 .wc-word.visible{opacity:1}
 .wc-word.dimmed{opacity:.12}
-.wc-word.highlighted{text-decoration:underline;text-decoration-color:#D95F3B}
+.wc-word.highlighted{text-decoration:underline;text-decoration-color:#556B2F}
 
 /* ── Graph ────────────────────────────────────────────── */
 .link{fill:none;stroke-opacity:.55}
@@ -65,7 +65,7 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 .node.dimmed circle{opacity:.12}
 .node.dimmed text{opacity:.12}
 .link.dimmed{stroke-opacity:.04}
-.node.highlighted text{font-weight:800;fill:#D95F3B}
+.node.highlighted text{font-weight:800;fill:#556B2F}
 
 /* ── Tooltip ──────────────────────────────────────────── */
 .tooltip{position:fixed;pointer-events:none;background:rgba(0,0,0,.8);color:#fff;padding:5px 10px;border-radius:4px;font-size:11px;opacity:0;transition:opacity .15s;z-index:999}
@@ -83,16 +83,16 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 /* ── Frequency slider ────────────────────────────────── */
 .freq-row{display:flex;gap:6px;align-items:center}
 .freq-range{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:#e0e0e0;border-radius:2px;outline:none;min-width:20px}
-.freq-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;background:#D95F3B;cursor:pointer;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.2)}
-.freq-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#D95F3B;cursor:pointer;border:2px solid #fff}
+.freq-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;background:#556B2F;cursor:pointer;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.2)}
+.freq-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#556B2F;cursor:pointer;border:2px solid #fff}
 .freq-num{width:45px;font-size:11px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;text-align:center;outline:none;background:#fafafa;-moz-appearance:textfield}
 .freq-num::-webkit-inner-spin-button,.freq-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-.freq-num:focus{border-color:#D95F3B;background:#fff}
+.freq-num:focus{border-color:#556B2F;background:#fff}
 
 /* ── Page navigation ─────────────────────────────────── */
 .page-nav{display:flex;align-items:center;gap:4px;user-select:none}
 .page-nav .pn-btn{cursor:pointer;font-size:11px;color:#999;padding:0 3px;transition:color .15s}
-.page-nav .pn-btn:hover{color:#D95F3B}
+.page-nav .pn-btn:hover{color:#556B2F}
 .page-nav .pn-btn.disabled{opacity:.3;pointer-events:none}
 .page-nav .pn-text{font-size:9.5px;color:#999}
 
@@ -120,7 +120,7 @@ body{height:100%;margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-seri
 /* ── Page 2 sidebar controls ─────────────────────────── */
 #page2-sidebar .ctrl-card{flex:0 0 auto}
 #page2-sidebar input[type="text"]{width:100%;font-size:10px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;background:#fafafa;outline:none}
-#page2-sidebar input[type="text"]:focus{border-color:#D95F3B;background:#fff}
+#page2-sidebar input[type="text"]:focus{border-color:#556B2F;background:#fff}
 #page2-sidebar select{width:100%;font-size:10px;padding:2px 4px;border:1px solid #ddd;border-radius:6px;background:#fafafa;outline:none}
 </style>
 </head>
@@ -221,7 +221,7 @@ const BI_RAW = [{"p": "Aylwin", "y": 1990, "c": "Concertación", "o": "centro-iz
 const PRESIDENTS = ["Aylwin","Frei","Lagos","Bachelet I","Piñera I","Bachelet II","Piñera II","Boric","Kast"];
 
 const ORIENT_COLOR = {
-  "izquierda":       "#D95F3B",
+  "izquierda":       "#556B2F",
   "centro-izquierda":"#4A7EC7",
   "centro":          "#7EA8C9",
   "centro-derecha":  "#F5A623",
@@ -229,7 +229,7 @@ const ORIENT_COLOR = {
 };
 
 // Rich color palette for word cloud
-const WC_COLORS = ["#D95F3B","#4A7EC7","#1B3A5C","#7EA8C9","#F5A623","#2E7D32","#8E24AA","#C62828","#00838F","#E65100","#AD1457","#1565C0","#6A1B9A","#2E7D32","#D84315"];
+const WC_COLORS = ["#556B2F","#4A7EC7","#1B3A5C","#7EA8C9","#F5A623","#2E7D32","#8E24AA","#C62828","#00838F","#E65100","#AD1457","#1565C0","#6A1B9A","#2E7D32","#D84315"];
 
 // ═══════════════════════════════════════════════════════════
 //  STATE
